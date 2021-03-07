@@ -12,9 +12,11 @@ DictIntStrAny = Dict[Union[int, str], Any]
 
 
 def generate_encoders_by_class_tuples(
-    type_encoder_map: Dict[Any, Callable]
-) -> Dict[Callable, Tuple]:
-    encoders_by_class_tuples: Dict[Callable, Tuple] = defaultdict(tuple)
+    type_encoder_map: Dict[Any, Callable[[Any], Any]]
+) -> Dict[Callable[[Any], Any], Tuple[Any, ...]]:
+    encoders_by_class_tuples: Dict[Callable[[Any], Any], Tuple[Any, ...]] = defaultdict(
+        tuple
+    )
     for type_, encoder in type_encoder_map.items():
         encoders_by_class_tuples[encoder] += (type_,)
     return encoders_by_class_tuples
@@ -31,7 +33,8 @@ def jsonable_encoder(
     exclude_unset: bool = False,
     exclude_defaults: bool = False,
     exclude_none: bool = False,
-    custom_encoder: dict = {},
+    custom_encoder: Dict[Any, Callable[[Any], Any]] = {},
+    sqlalchemy_safe: bool = True,
 ) -> Any:
     if include is not None and not isinstance(include, set):
         include = set(include)
@@ -42,8 +45,8 @@ def jsonable_encoder(
         if custom_encoder:
             encoder.update(custom_encoder)
         obj_dict = obj.dict(
-            include=include,
-            exclude=exclude,
+            include=include,  # type: ignore # in Pydantic
+            exclude=exclude,  # type: ignore # in Pydantic
             by_alias=by_alias,
             exclude_unset=exclude_unset,
             exclude_none=exclude_none,
@@ -56,6 +59,7 @@ def jsonable_encoder(
             exclude_none=exclude_none,
             exclude_defaults=exclude_defaults,
             custom_encoder=encoder,
+            sqlalchemy_safe=sqlalchemy_safe,
         )
     if isinstance(obj, Enum):
         return obj.value
@@ -66,8 +70,14 @@ def jsonable_encoder(
     if isinstance(obj, dict):
         encoded_dict = {}
         for key, value in obj.items():
-            if (value is not None or not exclude_none) and (
-                (include and key in include) or not exclude or key not in exclude
+            if (
+                (
+                    not sqlalchemy_safe
+                    or (not isinstance(key, str))
+                    or (not key.startswith("_sa"))
+                )
+                and (value is not None or not exclude_none)
+                and ((include and key in include) or not exclude or key not in exclude)
             ):
                 encoded_key = jsonable_encoder(
                     key,
@@ -75,6 +85,7 @@ def jsonable_encoder(
                     exclude_unset=exclude_unset,
                     exclude_none=exclude_none,
                     custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
                 )
                 encoded_value = jsonable_encoder(
                     value,
@@ -82,6 +93,7 @@ def jsonable_encoder(
                     exclude_unset=exclude_unset,
                     exclude_none=exclude_none,
                     custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
                 )
                 encoded_dict[encoded_key] = encoded_value
         return encoded_dict
@@ -98,6 +110,7 @@ def jsonable_encoder(
                     exclude_defaults=exclude_defaults,
                     exclude_none=exclude_none,
                     custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
                 )
             )
         return encoded_list
@@ -133,4 +146,5 @@ def jsonable_encoder(
         exclude_defaults=exclude_defaults,
         exclude_none=exclude_none,
         custom_encoder=custom_encoder,
+        sqlalchemy_safe=sqlalchemy_safe,
     )
